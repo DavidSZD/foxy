@@ -1,56 +1,43 @@
 const express = require('express');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const fetch = require('node-fetch');
 const cors = require('cors');
-const fileUpload = require('express-fileupload');
+const path = require('path'); // Importez le module path
+require('dotenv').config();
+
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Remplacez par votre clé API
-const apiKey = process.env.API_KEY; 
-const genAI = new GoogleGenerativeAI(apiKey);
+app.use(cors());
+app.use(express.json({ limit: '5mb' }));
 
-app.use(cors()); // Permet les requêtes cross-origin (important pour Render)
-app.use(express.json({ limit: '50mb' })); // Permet de recevoir des JSON, limite augmentée pour les images
-app.use(fileUpload());
-app.use(express.static('public')); // Assurez-vous que votre HTML est dans un dossier 'public'
+// Serveur de fichier statique
+app.use(express.static(path.join(__dirname, 'public'))); // "public" est le nom du dossier contenant vos fichiers statiques
 
-app.post('/api/chat', async (req, res) => {
-    try {
-        const userMessage = req.body.message;
-        const history = req.body.history || [];
-        const image = req.body.image; // Image en base64, si présente
+const apiKey = process.env.API_KEY; // Utilisez votre variable d'environnement pour la clé API
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // ou gemini-pro-vision
-        const chat = model.startChat({
-            history: history, // l'historique des conversations est passé au back-end
-        });
+app.post('/api/generate', async (req, res) => {
+  try {
+    const response = await fetch("https://api.together.xyz/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(req.body),
+    });
 
-        let result;
-        if (image) {
-            // S'il y a une image, utilisez gemini-pro-vision
-            const base64WithoutPrefix = image.split(',')[1];
-            const imagePart = {
-                inlineData: {
-                    data: base64WithoutPrefix,
-                    mimeType: 'image/jpeg' // ou 'image/png', selon le type d'image
-                }
-            };
-            result = await model.generateContent([userMessage, imagePart]);
-        } else {
-            // Sinon, utilisez gemini-pro
-            result = await chat.sendMessage(userMessage);
-        }
-
-        const response = await result.response;
-        const text = response.text();
-
-        res.json({ text });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Erreur lors de la communication avec l'IA" });
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
     }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to get a response from the AI" });
+  }
 });
 
 app.listen(port, () => {
-    console.log(`Serveur démarré sur http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
