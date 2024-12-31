@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot IA - Together AI</title>
+    <style>
+    /* Styles existants (inchangés) */
+    </style>
+</head>
+<body>
+
+<div id="chat-container">
+    <div id="messages"></div>
+    <div id="scroll-buttons">
+        <button class="scroll-btn" onclick="scrollToTop()">↑</button>
+        <button class="scroll-btn" onclick="scrollToBottom()">↓</button>
+    </div>
+    <div id="input-container">
+        <input type="file" id="image-upload" accept="image/*">
+        <button class="upload-btn" onclick="document.getElementById('image-upload').click()">
+            📎
+        </button>
+        <input type="text" id="user-input" placeholder="Tapez votre message...">
+        <button onclick="sendMessage()">Envoyer</button>
+    </div>
+</div>
+
+<script>
+    const messagesDiv = document.getElementById("messages");
+    const userInput = document.getElementById("user-input");
+    const imageUpload = document.getElementById("image-upload");
+    let conversationHistory = [];
+
+    // ... (fonctions scrollToTop, scrollToBottom, processMarkdown, copyCode, formatText, setTextColor restent inchangées)
+
+    function displayMessage(content, sender) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = sender === "user" ? "user-message" : "ai-message";
+
+        const messageBubble = document.createElement("div");
+        messageBubble.className = "message-bubble";
+
+        const messageContent = document.createElement("div");
+        messageContent.className = "message-content";
+
+        if (typeof content === "string") {
+            messageContent.innerHTML = processMarkdown(content);
+        } else if (content instanceof File) {
+            const img = document.createElement("img");
+            img.src = URL.createObjectURL(content);
+            messageContent.appendChild(img);
+        }
+
+        messageBubble.appendChild(messageContent);
+        messageDiv.appendChild(messageBubble);
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    imageUpload.addEventListener("change", function(e) {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            displayMessage(file, "user");
+        }
+    });
+
+    async function convertImageToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function sendMessage() {
+        const userMessage = userInput.value.trim();
+        const image = imageUpload.files[0];
+
+        if (!userMessage && !image) return;
+
+        if (userMessage) {
+            displayMessage(userMessage, "user");
+        }
+
+        let base64Image;
+        if (image) {
+            displayMessage(image, "user");
+            base64Image = await convertImageToBase64(image);
+        }
+
+        userInput.value = "";
+        imageUpload.value = "";
+        
+        const messageToSend = {
+            content: userMessage,
+            role: "user"
+        };
+        
+        if (base64Image) {
+            messageToSend.parts = [
+                { text: userMessage },
+                {
+                    inline_data: {
+                        mime_type: image.type,
+                        data: base64Image.split(',')[1] // Assurez-vous d'envoyer uniquement la partie base64 sans le préfixe
+                    }
+                }
+            ];
+        } else {
+            messageToSend.parts = [{ text: userMessage }];
+        }
+        
+        conversationHistory.push(messageToSend);
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: userMessage,
+                    history: conversationHistory.map(message => ({
+                        role: message.role === "user" ? "user" : "model",
+                        parts: message.parts
+                    })),
+                    image: base64Image
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error("Échec de la récupération de la réponse de l'IA");
+            }
+
+            const data = await response.json();
+            displayMessage(data.text, "ai");
+            
+            conversationHistory.push({
+                role: "model",
+                parts: [{ text: data.text }]
+            });
+
+        } catch (error) {
+            displayMessage("Erreur : Impossible de récupérer la réponse de l'IA.", "ai");
+            console.error(error);
+        }
+    }
+</script>
+
+</body>
+</html>
