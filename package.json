@@ -1,18 +1,18 @@
 {
-  "name": "foxy",
+  "name": "chatbot-app",
   "version": "1.0.0",
-  "description": "Chatbot IA avec Gemini",
+  "description": "Chatbot IA utilisant l'API Gemini",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "DavidSZD",
-  "license": "ISC",
   "dependencies": {
-    "@google/generative-ai": "^0.2.0",
+    "@google/generative-ai": "^0.2.1",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "express-fileupload": "^1.4.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

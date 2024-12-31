@@ -5,7 +5,110 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chatbot IA - Together AI</title>
     <style>
-    /* Styles existants (inchangés) */
+        /* Styles existants */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #chat-container {
+            width: 100%;
+            max-width: 600px;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        #messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            height: 70vh;
+            background: #f9f9f9;
+            scroll-behavior: smooth;
+        }
+        #scroll-buttons {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .scroll-btn {
+            padding: 10px;
+            background: rgba(0, 123, 255, 0.7);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #messages div {
+            margin: 5px 0;
+        }
+        .user-message {
+            align-self: flex-end;
+        }
+        .ai-message {
+            align-self: flex-start;
+        }
+        .message-bubble {
+            max-width: 80%;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: inline-block; /* Pour que le background s'ajuste à la taille du texte */
+        }
+        .user-message .message-bubble {
+            background-color: #e1f5fe; /* Bleu clair pour l'utilisateur */
+        }
+        .ai-message .message-bubble {
+            background-color: #f0f0f0; /* Gris clair pour l'IA */
+        }
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #input-container input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .message-content img {
+            max-width: 200px;
+            border-radius: 5px;
+        }
+        #image-upload {
+            display: none;
+        }
+        .upload-btn {
+            background-color: #28a745;
+        }
+        .upload-btn:hover {
+            background-color: #218838;
+        }
     </style>
 </head>
 <body>
@@ -32,7 +135,62 @@
     const imageUpload = document.getElementById("image-upload");
     let conversationHistory = [];
 
-    // ... (fonctions scrollToTop, scrollToBottom, processMarkdown, copyCode, formatText, setTextColor restent inchangées)
+    function scrollToTop() {
+        messagesDiv.scrollTop = 0;
+    }
+
+    function scrollToBottom() {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function processMarkdown(text) {
+        // Conversion des balises de formatage
+        text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        text = text.replace(/# (.*?)\\n/g, '<h1>$1</h1>');
+        text = text.replace(/## (.*?)\\n/g, '<h2>$1</h2>');
+        
+        // Détection et formatage du code
+        text = text.replace(/```([\s\S]*?)```/g, (match, code) => {
+            return `<pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><code>${code}</code></pre>`;
+        });
+        
+        return text;
+    }
+
+    function copyCode(button) {
+        const code = button.nextElementSibling.textContent;
+        navigator.clipboard.writeText(code);
+        button.textContent = 'Copié!';
+        setTimeout(() => button.textContent = 'Copier', 2000);
+    }
+
+    function formatText(type) {
+        const input = document.getElementById('user-input');
+        let start = input.selectionStart;
+        let end = input.selectionEnd;
+        let text = input.value;
+        
+        const formats = {
+            'h1': ['# ', '\\n'],
+            'h2': ['## ', '\\n'],
+            'bold': ['**', '**'],
+            'italic': ['*', '*'],
+            'code': ['```\\n', '\\n```']
+        };
+        
+        const [prefix, suffix] = formats[type];
+        input.value = text.substring(0, start) + prefix + text.substring(start, end) + suffix + text.substring(end);
+        input.focus();
+    }
+
+    function setTextColor(color) {
+        const input = document.getElementById('user-input');
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        const text = input.value;
+        input.value = text.substring(0, start) + `<span style="color: ${color}">` + text.substring(start, end) + '</span>' + text.substring(end);
+    }
 
     function displayMessage(content, sender) {
         const messageDiv = document.createElement("div");
