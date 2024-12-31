@@ -108,6 +108,12 @@
         .upload-btn:hover {
             background-color: #218838;
         }
+        .image-btn {
+            background-color: #ffc107;
+        }
+        .image-btn:hover {
+            background-color: #e0a800;
+        }
         pre {
             background-color: #e0e0e0;
             padding: 10px;
@@ -151,16 +157,19 @@
         </button>
         <input type="text" id="user-input" placeholder="Tapez votre message...">
         <button onclick="sendMessage()">Envoyer</button>
+        <button class="image-btn" onclick="generateImage()">Image</button>
     </div>
 </div>
 
 <script>
-    const apiUrl = "/api/generate"; // L'URL de votre serveur proxy
+    const apiUrl = "/api/generate";
+    const apiImageUrl = "/api/generateImage";
 
     const messagesDiv = document.getElementById("messages");
     const userInput = document.getElementById("user-input");
     const imageUpload = document.getElementById("image-upload");
     let conversationHistory = [];
+    let imageGenerationHistory = [];
 
     function scrollToTop() {
         messagesDiv.scrollTop = 0;
@@ -171,13 +180,11 @@
     }
 
     function processMarkdown(text) {
-        // Conversion des balises de formatage
         text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
         text = text.replace(/# (.*?)\\n/g, '<h1>$1</h1>');
         text = text.replace(/## (.*?)\\n/g, '<h2>$1</h2>');
 
-        // Détection et formatage du code
         text = text.replace(/```([\s\S]*?)```/g, (match, code) => {
             return `<pre><button class="copy-btn" onclick="copyCode(this)">Copier</button><code>${code}</code></pre>`;
         });
@@ -219,39 +226,61 @@
         input.value = text.substring(0, start) + `<span style="color: ${color}">` + text.substring(start, end) + '</span>' + text.substring(end);
     }
 
-    function displayMessage(content, sender) {
+    function displayMessage(content, sender, isImage = false) {
+        // Crée un nouvel élément div pour le message
         const messageDiv = document.createElement("div");
         messageDiv.className = sender === "user" ? "user-message" : "ai-message";
 
+        // Crée un nouvel élément div pour la bulle de message
         const messageBubble = document.createElement("div");
         messageBubble.className = "message-bubble";
 
+        // Crée un nouvel élément div pour le contenu du message
         const messageContent = document.createElement("div");
         messageContent.className = "message-content";
 
-        if (typeof content === "string") {
+        // Si le contenu est une image
+        if (isImage) {
+            const img = document.createElement("img");
+            img.src = content;
+            img.alt = "Image générée";
+            messageContent.appendChild(img);
+        } else if (typeof content === "string") {
             messageContent.innerHTML = processMarkdown(content);
         } else if (content instanceof File) {
             const img = document.createElement("img");
             img.src = URL.createObjectURL(content);
+            img.alt = "Image envoyée";
             messageContent.appendChild(img);
         }
 
+        // Ajoute le contenu du message à la bulle de message
         messageBubble.appendChild(messageContent);
+        // Ajoute la bulle de message au message
         messageDiv.appendChild(messageBubble);
+        // Ajoute le message à la div des messages
         messagesDiv.appendChild(messageDiv);
+        // Fait défiler vers le bas de la div des messages
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-        conversationHistory.push({
-            role: sender === "user" ? "user" : "assistant",
-            content: typeof content === "string" ? content : "Image envoyée"
-        });
     }
 
-    imageUpload.addEventListener("change", function(e) {
+    imageUpload.addEventListener("change", async function(e) {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             displayMessage(file, "user");
+            // Add the image to the conversation history
+            const base64Image = await convertImageToBase64(file);
+            conversationHistory.push({
+                content: [
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: `data:${file.type};base64,${base64Image}`
+                        }
+                    }
+                ],
+                role: "user"
+            });
         }
     });
 
@@ -264,43 +293,26 @@
         });
     }
 
-   async function sendMessage() {
+    async function sendMessage() {
         const userMessage = userInput.value.trim();
         const image = imageUpload.files[0];
 
-        if (!userMessage && !image) return;
-
-        let userContent;
-        if (image) {
-            const base64Image = await convertImageToBase64(image);
-            userContent = {
-                content: [
-                    { type: "text", text: userMessage || "Voici une image" },
-                    {
-                        type: "image_url",
-                        image_url: {
-                            url: `data:${image.type};base64,${base64Image}`
-                        }
-                    }
-                ],
-                role: "user"
-            };
-        } else {
+        let userContent = null; 
+        if (userMessage) {
             userContent = {
                 content: userMessage,
                 role: "user"
             };
-        }
-
-        if (userMessage) {
             displayMessage(userMessage, "user");
-        }
-        if (image) {
-            displayMessage(image, "user");
         }
 
         userInput.value = "";
         imageUpload.value = "";
+
+        
+        if (userContent) {
+            conversationHistory.push(userContent);
+        }
 
         try {
             const response = await fetch(apiUrl, {
@@ -310,7 +322,7 @@
                 },
                 body: JSON.stringify({
                     model: "meta-llama/Llama-Vision-Free",
-                    messages: [...conversationHistory, userContent],
+                    messages: [...conversationHistory],
                     "max_tokens": 1024,
                     "temperature": 0.7
                 })
@@ -323,8 +335,56 @@
             const data = await response.json();
             const aiMessage = data.choices[0].message.content;
             displayMessage(aiMessage, "ai");
+
+            conversationHistory.push({
+                role: "assistant",
+                content: aiMessage
+            });
         } catch (error) {
             displayMessage("Erreur : Impossible de récupérer la réponse de l'IA.", "ai");
+            console.error(error);
+        }
+    }
+
+    async function generateImage() {
+        const prompt = userInput.value.trim();
+        if (!prompt) return;
+
+        // Affiche le message "Image : [prompt]" sans l'ajouter à l'historique
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "user-message";
+        messageDiv.innerHTML = `<div class="message-bubble"><div class="message-content">Image : ${prompt}</div></div>`;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+        try {
+            const response = await fetch(apiImageUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "black-forest-labs/FLUX.1-schnell-Free",
+                    prompt: prompt,
+                    width: 1024,
+                    height: 768,
+                    steps: 1,
+                    n: 1,
+                    response_format: "b64_json"
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error("Échec de la génération de l'image");
+            }
+
+            const data = await response.json();
+            const base64Image = data.data[0].b64_json;
+            displayMessage(`data:image/jpeg;base64,${base64Image}`, "ai", true);
+
+            userInput.value = "";
+        } catch (error) {
+            displayMessage("Erreur : Impossible de générer l'image.", "ai");
             console.error(error);
         }
     }
